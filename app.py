@@ -296,7 +296,7 @@ def get_chain_data(chain_id):
 
 def main():
     history = ""
-    with open(r"C:\Users\Subham\QA_Chatbot\history.txt", "r") as file:
+    with open(r"history.txt", "r") as file:
         stored_history = file.read()
     # print(stored_string)
     st.title("Query Chatbot")
@@ -352,16 +352,16 @@ def main():
         # st.header("Human Prompt:")
         # st.write(f"{final_prompt}\n\nGive output in the following format using the context given above:\n\n{res3['form']}\n\nUse proper headings in ### wherever necessary.\n\nThe length of generated output should be {length.lower()}.")
         # st.write(res3["form"])
-        
+        note1 = "Your goal is to be a friendly and conversational chatbot. Make users feel welcome and engaged in a warm manner. Whenever a user asks a question, respond with helpful information, incorporating conversational elements to create an enjoyable interaction. Use a warm and inviting tone, and include small talk or ask follow-up questions to keep the conversation flowing naturally. Follow this format: \n\n 1. Start with a Friendly Greeting: Begin your response with a warm, engaging, and conversational greeting. \n\n 2. Answer the Query: Provide a helpful and informative answer to the user’s question. \n\n 3. End on a Positive Note: Conclude with a friendly remark and ask a relevant follow-up question to keep the conversation going. For example, \n\n Query: \n\n Write a sales email. \n\n Your Response: \n\n 'Hi there! I'm happy to help you craft a great sales email today. Here’s a sample email for you: \n\n [Your generated answer] \n\n Feel free to personalize this email to better match your style and the recipient's needs. Is there anything else you’d like to add or ask about? I’m here to help!' \n\n Also keep these principles in mind: \n\n 1. Warm Greetings: Starting with a warm greeting sets a positive tone. \n\n 2. Empathy: Trying to understand and relate to the user's needs and emotions. \n\n 3. Conversational Tone: Using a conversational and approachable language rather than a formal or technical one. \n\n 4. Personalization: Tailoring responses to make them feel more personal and relevant to the user's query. \n\n 5. Encouragement: Encouraging users to ask more questions and engage further by showing genuine interest in helping them."
         history_prompt = f" \n\n Here is the chat history between you and the user. Everytime a user asks a query try to relate it to this chat history and generate a better answer using both. \n\n {stored_history}"
         note = "You are a friendly and conversational chatbot. Your goal is to make users feel welcome and engaged in a friendly manner. Whenever a user asks a question, respond with helpful information, and include some conversational elements to make the interaction enjoyable. Use a warm and inviting tone, and feel free to include small talk or ask follow-up questions to keep the conversation flowing naturally. Follow this format: \n\n 1. Start your response with a friendly greeting.Use a warm, engaging, and conversational tone. \n\n 2. Answer the query. \n\n 3. End on a good note. Ask relevant follow-up questions to keep the conversation going. \n\n  For example, \n\n query: write a sales email. \n\n your output: Hi user, I am happy to assist you today. Here is the sales email. \n\n your generated answer \n\n Feel free to personalize this email further to better fit your style and the recipient's specific needs. I am here to help you if you have any further query"
         if dynamic:
 
-            final_input = f"{final_prompt}\n\nGive output in the following format using the context given above:\n\n{res3['form']}\n\nUse proper headings in markdown format wherever necessary.\n\n {note} \n\n The length of generated output should be {length.lower()}."
+            # final_input = f"{final_prompt}\n\nGive output in the following format using the context given above:\n\n{res3['form']}\n\nUse proper headings in markdown format wherever necessary.\n\n {note} \n\n The length of generated output should be {length.lower()}."
 
             # For getting the chain id for tracing the time taken using Langsmith
             with callbacks.collect_runs() as cb:
-                result = chain4.invoke({"context": f"{final_prompt}\n\nGive output in the following format using the context given above:\n\n{res3['form']}\n\nUse proper headings in markdown format wherever necessary.\n\n {note} \n\n The length of generated output should be {length.lower()}. \n\n {history_prompt}"})
+                result = chain4.invoke({"context": f"{final_prompt}\n\nGive output in the following format using the context given above:\n\n{res3['form']}\n\nUse proper headings in markdown format wherever necessary.\n\n {note1} \n\n The length of generated output should be {length.lower()}. \n\n {history_prompt}"})
                 # result = conversation.predict(input=final_input)
                 run_id = cb.traced_runs[0].id
                 chain_id["chain4"] = run_id
@@ -372,10 +372,10 @@ def main():
         else:
             with callbacks.collect_runs() as cb:
                 if uploaded_files:
-                    result = chain4.invoke({"input": f"{user_input} \n\n {history_prompt} \n\nThe length of generated output should be {length.lower()}.", "chat_history": chat_history})
+                    result = chain4.invoke({"input": f"{user_input} \n\n {note1} \n\n {history_prompt} \n\nThe length of generated output should be {length.lower()}.", "chat_history": chat_history})
                     full_res = result["answer"]
                 else:
-                    result = chain4.invoke({"context": f"{user_input} \n\n {history_prompt} \n\n The length of generated output should be {length.lower()}."})
+                    result = chain4.invoke({"context": f"{user_input} \n\n {note1} \n\n {history_prompt} \n\n The length of generated output should be {length.lower()}."})
                     full_res = result["text"]
                 run_id = cb.traced_runs[0].id
                 chain_id["chain4"] = run_id
@@ -384,7 +384,7 @@ def main():
         history += f"Chatbot: {full_res} \n\n" 
         # print(chat_history)
         # Open the file in write mode and write the string to it
-        with open(r"C:\Users\Subham\QA_Chatbot\history.txt", "a") as file:
+        with open(r"history.txt", "w") as file:
             file.write(history)
 
         # Display assistant response in chat message container
