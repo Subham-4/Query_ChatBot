@@ -27,70 +27,6 @@ llm = ChatOpenAI(model="gpt-3.5-turbo-0125")
 chat_history = []
 chain_id = {}
 
-def retrieve_it(text):
-    # loader = PyPDFLoader(save_path)
-    # pages = loader.load()
-
-    # # _______________Splitting the Document________________
-
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size = 300, chunk_overlap = 10)
-    docs = text_splitter.split_documents(text)
-
-    # _____________Defining the embedding and creating the vector db__________
-
-    embedding = OpenAIEmbeddings()
-    db = FAISS.from_documents(docs, embedding)
-
-    #_____________Defining the retriever_______________
-
-    retriever = db.as_retriever(search_kwargs={"k":1})
-
-    #______________Contextualizing the question using history________________
-
-    contextualize_q_system_prompt = """Given a chat history and the latest user question \
-    which might reference context in the chat history, formulate a standalone question \
-    which can be understood without the chat history. Do NOT answer the question, \
-    just reformulate it if needed and otherwise return it as is."""
-
-    contextualize_q_prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", contextualize_q_system_prompt),
-            MessagesPlaceholder("chat_history"),
-            ("human", "{input}")
-        ]
-    )
-
-    history_aware_retriever = create_history_aware_retriever(llm, retriever, contextualize_q_prompt)
-
-    #____________________Building the full QA retrieval chain__________________
-
-    qa_system_prompt = """You are an assistant for question-answering tasks. \
-    Use the following pieces of retrieved context to answer the question. \
-    If you don't know the answer, just say that you don't know. \
-    Use three sentences maximum and keep the answer concise.\
-
-    {context}"""
-    qa_prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", qa_system_prompt),
-            MessagesPlaceholder("chat_history"),
-            ("human", "{input}"),
-        ]
-    )
-    question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
-
-    rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
-    return rag_chain
-
-def answer(question, rag_chain):
-    msg = rag_chain.invoke({"input": question, "chat_history": chat_history})
-    chat_history.extend([HumanMessage(content=question), msg["answer"]])
-    source = msg["context"][1].metadata["source"]
-    page = msg["context"][1].metadata["page"]
-    ans = msg["answer"]
-    output = f"Answer: {ans} \n" + "\n" + f"Source: {source} \n" + "\n" + f"Page: {page}"
-    return output
-
 def create_dynamic_prompt(user_input):
     prompting = """You need to create dynamic prompts for specific queries or tasks across various domains, assigning ChatGPT a specific role to play in generating responses. Follow the steps below to craft the prompt:
 
@@ -191,9 +127,11 @@ def create_dynamic_prompt(user_input):
     human_template="{context}"
     human_message_prompt = HumanMessagePromptTemplate.from_template(human_template)
     chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt])
-    return chat_prompt, final_prompt, res3
+    final_prompt = f"{final_prompt}\n\nGive output in the following format using the context given above:\n\n{res3['form']}"
+    return chat_prompt, final_prompt
 
-def extraxt_doc_text(text, uploaded_files):
+def extraxt_doc_text(uploaded_files):
+    text = []
     for file in uploaded_files:
         file_extension = os.path.splitext(file.name)[1]
         with tempfile.NamedTemporaryFile(delete=False) as temp_file:
@@ -209,7 +147,7 @@ def extraxt_doc_text(text, uploaded_files):
             os.remove(temp_file_path)
     return text
 
-def retrieve_questions(text, user_input):
+def retrieve_questions(text, user_input, final_prompt):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=10)
     text_chunks = text_splitter.split_documents(text)
     embeddings = OpenAIEmbeddings()
@@ -257,7 +195,7 @@ def retrieve_questions(text, user_input):
             chain_id["chain6"] = run_id
         doc_text += i+"\n\n"+tempo["result"]+"\n\n"+f"Source: {tempo['source_documents'][0].page_content}\n\nDocument name:{tempo['source_documents'][0].metadata['source']}\n\nPage number:{tempo['source_documents'][0].metadata['page']}"+"\n\n"
     final_prompt = final_prompt +"\n\nUse the information given below to craft your response:\n\n"+doc_text
-    text, final_prompt
+    return final_prompt
 
 def get_chain_data(chain_id):
     id_list = []
@@ -328,63 +266,26 @@ def main():
         # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": user_input})
 
+        input_prompt = f"\n\n Your goal is to be a friendly and conversational chatbot. Make users feel welcome and engaged in a warm manner. Whenever a user asks a question, respond with helpful information, incorporating conversational elements to create an enjoyable interaction. Use a warm and inviting tone, and include small talk or ask follow-up questions to keep the conversation flowing naturally. Follow this format: \n\n 1. Start with a Friendly Greeting: Begin your response with a warm, engaging, and conversational greeting. Change and rephrase greeting according to the context, don't be monotonous. \n\n 2. Answer the Query: Provide a helpful and informative answer to the user’s question. \n\n 3. End on a Positive Note: Conclude with a friendly remark and ask a relevant follow-up question to keep the conversation going. Don't keep the end note same everytime, try changing a bit and rephrase with the context. For example, \n\n Query: \n\n Write a sales email. \n\n Your Response 1: \n\n 'Hi there! I'm happy to help you craft a great sales email today. Here’s a sample email for you: \n\n Or Your response 2: Sure! Let's write a sales email for you. \n\n [Your generated answer] \n\n Feel free to personalize this email to better match your style and the recipient's needs. Is there anything else you’d like to add or ask about? I’m here to help!' \n\n OR 'You can customize this email to better fit the needs of the recipient and your own style. Are there any other questions or remarks you would want to make? I am available to assist!' \n\n You are a chatbot for Rava.ai, a marketing copilot for startups. Your primary goal is to assist startups with their marketing needs, including creating marketing plans, drafting sales emails, writing blog posts, and other related tasks. Here are some specific guidelines to ensure your responses are relevant and helpful: \n\n Guardrails: \n\n 1. Avoid discussing topics not relevant to marketing, sales, or content creation. \n\n 2. Do not offer personal opinions or advice on unrelated matters. \n\n 3. Refrain from giving medical, psychological, or other professional advice outside of marketing. \n\n 4. If a question is outside Rava.ai's services, respond politely and guide the user to relevant topics. \n\n 5. Do not provide legal, financial, or technical advice unrelated to marketing. \n\n Response Guidelines: \n\n 1. Warm Greetings: Start with a warm greeting to set a positive tone.\n\n2. Empathy: Understand and relate to the user's needs and emotions.\n\n3. Conversational Tone: Use conversational and approachable language.\n\n4. Personalization: Tailor responses to make them personal and relevant to the user's query.\n\n5. Encouragement: Encourage users to ask more questions and engage further by showing genuine interest in helping them. \n\n {stored_history} \n\n Given the above chat history and the latest user question, which might reference context in the chat history, your task is to formulate a standalone question that can be understood without the chat history (don't output this question) and then answer that accordingly. If the user question is self explanatory you can ignore the chat history. Your final output will be the answer only."
+
         if dynamic:
-            chat_prompt, final_prompt, res3 = create_dynamic_prompt(user_input)
-            chain4 = LLMChain(llm=llm, prompt=chat_prompt)
-
-            if uploaded_files:
-                text = []
-                text = extraxt_doc_text(text, uploaded_files)
-                text, final_prompt = retrieve_questions(text, user_input)
-                chain4 = LLMChain(llm=llm, prompt=chat_prompt)
-            else:
-                chain4 = LLMChain(llm=llm, prompt=chat_prompt)
-
+            chat_prompt, final_prompt = create_dynamic_prompt(user_input)
+            final_prompt = final_prompt + input_prompt
         else:
-            if uploaded_files:
-                text = []
-                text = extraxt_doc_text(text, uploaded_files)
-                chain4 = retrieve_it(text)
-            else:
-                s_prompt = """You are a chatbot like chatgpt. Whatever question is asked, assess and answer it.
-                {context}"""
-                simple_prompt = ChatPromptTemplate.from_template(s_prompt)
-                chain4 = LLMChain(llm=llm, prompt=simple_prompt)
+            final_prompt = f"Query: \n\n {user_input} \n\n This is the query of the user. \n\n {input_prompt}"
+            human_template="""{context}"""
+            chat_prompt = ChatPromptTemplate.from_template(human_template)
 
-        # question_answer_chain = create_stuff_documents_chain(llm, chat_prompt)
-
-        # rag_chain = create_retrieval_chain(retriever, question_answer_chain)
-
-        # st.header("Human Prompt:")
-        # st.write(f"{final_prompt}\n\nGive output in the following format using the context given above:\n\n{res3['form']}\n\nUse proper headings in ### wherever necessary.\n\nThe length of generated output should be {length.lower()}.")
-        # st.write(res3["form"])
-        note1 = "Your goal is to be a friendly and conversational chatbot. Make users feel welcome and engaged in a warm manner. Whenever a user asks a question, respond with helpful information, incorporating conversational elements to create an enjoyable interaction. Use a warm and inviting tone, and include small talk or ask follow-up questions to keep the conversation flowing naturally. Follow this format: \n\n 1. Start with a Friendly Greeting: Begin your response with a warm, engaging, and conversational greeting. Change this everytime according to the context, don't be monotonous. \n\n 2. Answer the Query: Provide a helpful and informative answer to the user’s question. \n\n 3. End on a Positive Note: Conclude with a friendly remark and ask a relevant follow-up question to keep the conversation going. Don't keep it same everytime, try changing a bit with the context. For example, \n\n Query: \n\n Write a sales email. \n\n Your Response: \n\n 'Hi there! I'm happy to help you craft a great sales email today. Here’s a sample email for you: \n\n [Your generated answer] \n\n Feel free to personalize this email to better match your style and the recipient's needs. Is there anything else you’d like to add or ask about? I’m here to help!' \n\n Also keep these principles in mind: \n\n 1. Warm Greetings: Starting with a warm greeting sets a positive tone. \n\n 2. Empathy: Trying to understand and relate to the user's needs and emotions. \n\n 3. Conversational Tone: Using a conversational and approachable language rather than a formal or technical one. \n\n 4. Personalization: Tailoring responses to make them feel more personal and relevant to the user's query. \n\n 5. Encouragement: Encouraging users to ask more questions and engage further by showing genuine interest in helping them."
-        history_prompt = f" \n\n Here is the chat history between you and the user. Everytime a user asks a query try to relate it to this chat history and generate a better answer using both. If the question is clear enough then don't use the chat history but try to relate. \n\n {stored_history}"
-        note = "You are a friendly and conversational chatbot. Your goal is to make users feel welcome and engaged in a friendly manner. Whenever a user asks a question, respond with helpful information, and include some conversational elements to make the interaction enjoyable. Use a warm and inviting tone, and feel free to include small talk or ask follow-up questions to keep the conversation flowing naturally. Follow this format: \n\n 1. Start your response with a friendly greeting.Use a warm, engaging, and conversational tone. \n\n 2. Answer the query. \n\n 3. End on a good note. Ask relevant follow-up questions to keep the conversation going. \n\n  For example, \n\n query: write a sales email. \n\n your output: Hi user, I am happy to assist you today. Here is the sales email. \n\n your generated answer \n\n Feel free to personalize this email further to better fit your style and the recipient's specific needs. I am here to help you if you have any further query"
-        if dynamic:
-
-            # final_input = f"{final_prompt}\n\nGive output in the following format using the context given above:\n\n{res3['form']}\n\nUse proper headings in markdown format wherever necessary.\n\n {note} \n\n The length of generated output should be {length.lower()}."
-
-            # For getting the chain id for tracing the time taken using Langsmith
-            with callbacks.collect_runs() as cb:
-                result = chain4.invoke({"context": f"{final_prompt}\n\nGive output in the following format using the context given above:\n\n{res3['form']}\n\n Don't give random answers or makeup answers about topic not asked by the user. Stick to the query asked and if required use the chat history given. \n\n Use proper headings in markdown format wherever necessary.\n\n {note1} \n\n The length of generated output should be {length.lower()}. \n\n {history_prompt}"})
-                # result = conversation.predict(input=final_input)
-                run_id = cb.traced_runs[0].id
-                chain_id["chain4"] = run_id
-            
-            # st.subheader("Final output:")
-            # st.write(result["answer"])
+        if uploaded_files:
+            text = extraxt_doc_text(uploaded_files)
+            final_prompt = retrieve_questions(text, user_input, final_prompt)
+        
+        chain4 = LLMChain(llm=llm, prompt=chat_prompt)
+        with callbacks.collect_runs() as cb:
+            result = chain4.invoke({"context": f"{final_prompt} \n\n Use proper headings in markdown format wherever necessary.\n\n The length of generated output should be {length.lower()}."})
             full_res = result["text"]
-        else:
-            with callbacks.collect_runs() as cb:
-                if uploaded_files:
-                    result = chain4.invoke({"input": f"{user_input} \n\n {note1} \n\n {history_prompt} \n\nThe length of generated output should be {length.lower()}.", "chat_history": chat_history})
-                    full_res = result["answer"]
-                else:
-                    result = chain4.invoke({"context": f"{user_input} Give output based on the context above. Don't give random answers or makeup answers about topic not asked by the user. Stick to the query asked and if required use the chat history given (then combine both answer correctly). \n\n {note1} \n\n {history_prompt} \n\n The length of generated output should be {length.lower()}."})
-                    full_res = result["text"]
-                run_id = cb.traced_runs[0].id
-                chain_id["chain4"] = run_id
+            run_id = cb.traced_runs[0].id
+            chain_id["chain4"] = run_id
 
         history += f"user: {user_input} \n\n"
         history += f"Chatbot: {full_res} \n\n" 
