@@ -20,7 +20,7 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.messages import HumanMessage
 import sys
 
-os.environ['LANGCHAIN_TRACING_V2'] = "false"
+os.environ['LANGCHAIN_TRACING_V2'] = "true"
 os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]
 os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 llm = ChatOpenAI(model="gpt-3.5-turbo-0125")
