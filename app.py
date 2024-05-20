@@ -343,7 +343,7 @@ def main():
         else:
             if uploaded_files:
                 text = []
-                text = extraxt_doc_text(text)
+                text = extraxt_doc_text(text, uploaded_files)
                 chain4 = retrieve_it(text)
             else:
                 s_prompt = """You are a chatbot like chatgpt. Whatever question is asked, assess and answer it.
